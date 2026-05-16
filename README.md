@@ -30,7 +30,7 @@ make run
 
 ## Windows (без WSL)
 
-Так, потрібна **окрема програма — [MSYS2](https://www.msys2.org/)** (~500 МБ).  
+Потрібна **окрема програма — [MSYS2](https://www.msys2.org/)** (~500 МБ).  
 Це середовище з компілятором C, `make` і GTK (як `apt` у Linux). Без нього `.exe` не зібрати.
 
 ### Крок 1 — один раз
@@ -61,14 +61,7 @@ make
 | Подвійний клік `launcher.exe` без `run.bat` | не знайде DLL GTK |
 
 Шляхи в `config/programs.conf` можна лишати `./bin/demo` — на Windows автоматично шукається `demo.exe`.
-
-## Git
-
-```bash
-cd app
-git add .
-git commit -m "Початкова версія"
-```
+``
 
 ## Нова програма
 
