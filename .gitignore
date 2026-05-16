@@ -1,0 +1,12 @@
+# Збірка
+bin/
+output/
+*.o
+*.a
+
+# Редактор / ОС
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
