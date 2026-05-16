@@ -21,6 +21,5 @@ int programs_load(const char *filename);
 int programs_count(void);
 const Program *programs_get(int index);
 int programs_executable(const char *path);
-int programs_launch(const Program *prog, char *errbuf, size_t errlen);
 
 #endif

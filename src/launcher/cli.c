@@ -1,40 +1,11 @@
 /* Консольна версія меню (запасний варіант без GTK) */
 
 #include "programs.h"
+#include "process.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
-
-static void run_blocking(const Program *prog)
-{
-    pid_t pid;
-    int status;
-    char err[256];
-
-    if (!programs_executable(prog->path)) {
-        printf("  Помилка: «%s» недоступний.\n", prog->path);
-        return;
-    }
-
-    pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        return;
-    }
-    if (pid == 0) {
-        programs_chdir_home();
-        if (programs_launch(prog, err, sizeof err) < 0) {
-            fprintf(stderr, "%s\n", err);
-            _exit(127);
-        }
-    }
-    waitpid(pid, &status, 0);
-    if (WIFEXITED(status))
-        printf("  Код завершення: %d\n", WEXITSTATUS(status));
-}
 
 int main(void)
 {
@@ -61,8 +32,16 @@ int main(void)
         choice = atoi(buf);
         if (choice == 0)
             break;
-        if (choice >= 1 && choice <= programs_count())
-            run_blocking(programs_get(choice - 1));
+        if (choice >= 1 && choice <= programs_count()) {
+            const Program *p = programs_get(choice - 1);
+            char err[256];
+            int code = -1;
+
+            if (programs_run_blocking(p, err, sizeof err, &code) < 0)
+                printf("  Помилка: %s\n", err);
+            else if (code >= 0)
+                printf("  Код завершення: %d\n", code);
+        }
     }
     return 0;
 }

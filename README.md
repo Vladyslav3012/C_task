@@ -1,61 +1,81 @@
 # MENU_launcher — система меню (C + GTK3)
 
-Графічне меню для запуску прикладних програм (завдання з листа І. Чайковського).
+Графічне меню для запуску прикладних програм.
 
-**Git-репозиторій тільки в цій папці (`app/`).**  
-Каталог `Ccc/` вище — для лабораторних і інших файлів; вони **не** входять у git.
+**Git-репозиторій тільки в `app/`.** Папка `Ccc/` з лабами — окремо, не в git.
 
 ## Структура
 
 ```
 app/
+├── build.bat, run.bat      ← Windows (подвійний клік)
 ├── Makefile
-├── README.md
-├── .gitignore
-├── config/
-│   └── programs.conf
+├── config/programs.conf
 ├── include/
-│   └── programs.h
-├── src/
-│   ├── core/
-│   │   └── programs.c
-│   └── launcher/
-│       ├── gui.c
-│       └── cli.c
-├── modules/
-│   ├── demo/main.c
-│   └── gold_stub/main.c
-├── bin/          ← після make (не в git)
-└── output/       ← звіти PRINT (не в git)
+├── src/core/               programs.c, process.c
+├── src/launcher/           gui.c, cli.c
+├── modules/demo/, gold_stub/
+├── bin/                    після make
+└── output/
 ```
 
-## Збірка
+## Linux
 
 ```bash
 cd app
-sudo apt install build-essential libgtk-3-dev   # один раз
+sudo apt install build-essential libgtk-3-dev
 make
 make run
 ```
 
-Консоль: `make run-cli`
+## Windows (без WSL)
+
+Так, потрібна **окрема програма — [MSYS2](https://www.msys2.org/)** (~500 МБ).  
+Це середовище з компілятором C, `make` і GTK (як `apt` у Linux). Без нього `.exe` не зібрати.
+
+### Крок 1 — один раз
+
+1. Завантажте і встановіть **MSYS2** → за замовчуванням `C:\msys64`
+2. Подвійний клік **`build.bat`** у папці `app`  
+   (або термінал **MSYS2 UCRT64**):
+
+```bash
+pacman -S --needed mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-gtk3 make
+cd /c/шлях/до/Ccc/app
+make
+```
+
+### Крок 2 — запуск
+
+- Подвійний клік **`run.bat`**, або  
+- У UCRT64: `make run`
+
+`run.bat` додає `C:\msys64\ucrt64\bin` у PATH (DLL для GTK). Якщо MSYS2 в іншому місці — змініть шлях у `run.bat`.
+
+### Що не підійде
+
+| Не достатньо | Чому |
+|--------------|------|
+| Лише «Командний рядок» Windows | немає `gcc`, `make`, GTK |
+| Visual Studio без GTK | немає gtk+-3.0 |
+| Подвійний клік `launcher.exe` без `run.bat` | не знайде DLL GTK |
+
+Шляхи в `config/programs.conf` можна лишати `./bin/demo` — на Windows автоматично шукається `demo.exe`.
 
 ## Git
 
 ```bash
 cd app
-git status
 git add .
-git commit -m "Початкова версія меню-лаунчера"
+git commit -m "Початкова версія"
 ```
 
-## Нова прикладна програма
+## Нова програма
 
-1. `modules/my_tool/main.c`
-2. Ціль у `Makefile` (як `demo`)
-3. Рядок у `config/programs.conf`: `Назва|./bin/my_tool|Опис`
-4. `make` → **RESET** у вікні
+1. `modules/my_tool/main.c` + ціль у `Makefile`
+2. `config/programs.conf`: `Назва|./bin/my_tool|Опис`
+3. `make` → **RESET**
 
-## Зовнішня програма (Python)
+## Python / зовнішні exe
 
-Скрипт `bin/run_gold.sh` + запис у `config/programs.conf` — див. **USER MANUAL** у вікні.
+Додайте `.exe` або `.bat` у `bin/` і пропишіть у `config/programs.conf`.

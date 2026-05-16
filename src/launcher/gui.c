@@ -8,9 +8,9 @@
 #include <gtk/gtk.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 #include <errno.h>
+
+#include "process.h"
 
 typedef struct {
     GtkWidget *window;
@@ -84,32 +84,6 @@ static void show_info(GtkWindow *parent, const char *title, const char *msg)
     gtk_widget_destroy(d);
 }
 
-static int spawn_program(const Program *prog, char *errbuf, size_t errlen)
-{
-    pid_t pid;
-    const char *home = getenv("LAUNCHER_HOME");
-
-    if (!programs_executable(prog->path)) {
-        snprintf(errbuf, errlen,
-                 "Файл «%s» не знайдено або не виконуваний.", prog->path);
-        return -1;
-    }
-
-    pid = fork();
-    if (pid < 0) {
-        snprintf(errbuf, errlen, "fork: %s", strerror(errno));
-        return -1;
-    }
-    if (pid == 0) {
-        if (home && home[0])
-            (void)chdir(home);
-        execl(prog->path, prog->path, (char *)NULL);
-        fprintf(stderr, "exec %s: %s\n", prog->path, strerror(errno));
-        _exit(127);
-    }
-    return (int)pid;
-}
-
 static void on_program_clicked(GtkButton *btn, gpointer user_data)
 {
     App *app = user_data;
@@ -124,7 +98,7 @@ static void on_program_clicked(GtkButton *btn, gpointer user_data)
     snprintf(status, sizeof status, "Запуск: %s …", prog->name);
     set_status(app, status);
 
-    if (spawn_program(prog, err, sizeof err) < 0) {
+    if (programs_spawn_async(prog, err, sizeof err) < 0) {
         progress_pulse(app, FALSE);
         show_error(app, "Помилка запуску", err);
         return;
