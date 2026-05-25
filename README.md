@@ -1,22 +1,19 @@
-# MENU_launcher — система меню (C + GTK3)
+# GOLD_code_correlation_analysis — меню (C + GTK3)
 
-Графічне меню для запуску прикладних програм.
-
-**Git-репозиторій тільки в `app/`.** Папка `Ccc/` з лабами — окремо, не в git.
+Графічне меню для аналізу кодів Голда (інтерфейс 1:1 за макетом) з підключенням обчислювальних модулів.
 
 ## Структура
 
 ```
 app/
-├── build.bat, run.bat      ← Windows (подвійний клік)
-├── Makefile
-├── config/programs.conf
-├── include/
-├── src/core/               programs.c, process.c
-├── src/launcher/           gui.c, cli.c
-├── modules/demo/, gold_stub/
+├── config/gold.conf        шляхи compute / viewer
+├── docs/user_manual_uk.txt
+├── src/launcher/           gui.c, gui_layout.c, gui_handlers.c, …
+├── src/core/               programs.c, process.c, gold_config.c
+├── modules/gold_compute/   заглушка обчислення
+├── modules/gold_viewer/    перегляд результатів (GTK)
 ├── bin/                    після make
-└── output/
+└── output/                 summary.json, acf_*.txt, report.txt
 ```
 
 ## Linux
@@ -28,7 +25,7 @@ make
 make run
 ```
 
-## Windows (без WSL)
+## Windows
 
 Потрібна **окрема програма — [MSYS2](https://www.msys2.org/)** (~500 МБ).  
 Це середовище з компілятором C, `make` і GTK (як `apt` у Linux). Без нього `.exe` не зібрати.
@@ -60,15 +57,33 @@ make
 | Visual Studio без GTK | немає gtk+-3.0 |
 | Подвійний клік `launcher.exe` без `run.bat` | не знайде DLL GTK |
 
-Шляхи в `config/programs.conf` можна лишати `./bin/demo` — на Windows автоматично шукається `demo.exe`.
-``
+## Кнопки
 
-## Нова програма
+| Кнопка | Дія |
+|--------|-----|
+| USER MANUAL | Посібник з docs/user_manual_uk.txt |
+| INFO | Поточні параметри та шляхи |
+| START | Запуск gold_compute з параметрами форми |
+| FINISH | Вихід (з підтвердженням при обчисленні) |
+| RESET | Скидання форми та output |
+| PRINT | output/report.txt |
+| Опції | config/gold.conf |
+| АКФ/ВКФ/SRT | gold_viewer для відповідного файлу |
 
-1. `modules/my_tool/main.c` + ціль у `Makefile`
-2. `config/programs.conf`: `Назва|./bin/my_tool|Опис`
-3. `make` → **RESET**
+## Підключення зовнішньої програми
 
-## Python / зовнішні exe
+У `config/gold.conf`:
 
-Додайте `.exe` або `.bat` у `bin/` і пропишіть у `config/programs.conf`.
+```
+compute=./bin/your_engine.exe
+viewer=./bin/gold_viewer
+```
+
+Обчислювальна програма повинна після роботи створити:
+
+- `output/summary.json` — поля prim_base, prim_opt, pairs_base, pairs_opt, ens1, ens2, ens3
+- `output/acf_1.txt` … `output/usrt_2.txt`
+
+Аргументи командного рядка: `--n`, `--corr`, `--crit`, `--k` (як у gold_compute).
+
+Для Python або іншого `.exe` вкажіть повний шлях у `compute=`; робочий каталог — каталог `app/` (`LAUNCHER_HOME`).

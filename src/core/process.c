@@ -8,8 +8,10 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#define _POSIX_C_SOURCE 200809L
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 #endif
 
 static int file_exists(const char *path)
@@ -53,47 +55,89 @@ int programs_executable(const char *path)
     return programs_resolve_path(path, tmp, sizeof tmp) == 0;
 }
 
-int programs_spawn_async(const Program *prog, char *errbuf, size_t errlen)
+static void child_clear(ChildProc *child)
+{
+    if (!child)
+        return;
+#ifdef _WIN32
+    if (child->active && child->process) {
+        CloseHandle((HANDLE)child->process);
+        child->process = NULL;
+    }
+#else
+    (void)child;
+#endif
+    child->active = 0;
+    child->pid = 0;
+}
+
+#ifdef _WIN32
+static int build_cmdline(const char *exe, char *const argv[], char *buf, size_t buflen)
+{
+    size_t pos = 0;
+    int i;
+
+    pos += (size_t)snprintf(buf + pos, buflen - pos, "\"%s\"", exe);
+    for (i = 0; argv && argv[i]; i++)
+        pos += (size_t)snprintf(buf + pos, buflen - pos, " \"%s\"", argv[i]);
+    return pos < buflen ? 0 : -1;
+}
+#endif
+
+int programs_spawn_path_argv(const char *path, char *const argv[],
+                             ChildProc *child, char *errbuf, size_t errlen)
 {
     char resolved[PATH_LEN];
 
-    if (!prog) {
+    if (!path) {
         if (errbuf && errlen)
-            snprintf(errbuf, errlen, "Програму не обрано.");
+            snprintf(errbuf, errlen, "Шлях програми не задано.");
         return -1;
     }
-    if (programs_resolve_path(prog->path, resolved, sizeof resolved) != 0) {
+    if (programs_resolve_path(path, resolved, sizeof resolved) != 0) {
         if (errbuf && errlen)
-            snprintf(errbuf, errlen,
-                     "Файл «%s» не знайдено.\nЗберіть: make (у MSYS2 UCRT64).", prog->path);
+            snprintf(errbuf, errlen, "Файл «%s» не знайдено.\nЗберіть: make", path);
         return -1;
     }
 
     programs_chdir_home();
+    if (child)
+        child_clear(child);
 
 #ifdef _WIN32
     {
         STARTUPINFOA si;
         PROCESS_INFORMATION pi;
-        char cmd[PATH_LEN + 32];
+        char cmd[4096];
+
+        if (build_cmdline(resolved, argv, cmd, sizeof cmd) != 0) {
+            if (errbuf && errlen)
+                snprintf(errbuf, errlen, "Занадто довга командний рядок.");
+            return -1;
+        }
 
         ZeroMemory(&si, sizeof si);
         si.cb = sizeof si;
         ZeroMemory(&pi, sizeof pi);
-        snprintf(cmd, sizeof cmd, "\"%s\"", resolved);
 
         {
             const char *home = getenv("LAUNCHER_HOME");
-
-            if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE,
+            if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
                                 NULL, home && home[0] ? home : NULL, &si, &pi)) {
                 if (errbuf && errlen)
                     snprintf(errbuf, errlen, "CreateProcess: код %lu", GetLastError());
                 return -1;
             }
         }
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
+        if (child) {
+            child->process = pi.hProcess;
+            child->pid = pi.dwProcessId;
+            child->active = 1;
+            CloseHandle(pi.hThread);
+        } else {
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
         return 0;
     }
 #else
@@ -105,79 +149,109 @@ int programs_spawn_async(const Program *prog, char *errbuf, size_t errlen)
             return -1;
         }
         if (pid == 0) {
-            execl(resolved, resolved, (char *)NULL);
+            char *args[64];
+            int i, n = 1;
+            args[0] = resolved;
+            if (argv) {
+                for (i = 0; argv[i] && n < 62; i++)
+                    args[n++] = argv[i];
+            }
+            args[n] = NULL;
+            execv(resolved, args);
             fprintf(stderr, "exec %s: %s\n", resolved, strerror(errno));
             _exit(127);
+        }
+        if (child) {
+            child->pid = (int)pid;
+            child->active = 1;
         }
         return 0;
     }
 #endif
 }
 
-int programs_run_blocking(const Program *prog, char *errbuf, size_t errlen, int *exit_code)
+void programs_child_kill(ChildProc *child)
 {
-    char resolved[PATH_LEN];
+    if (!child || !child->active)
+        return;
+#ifdef _WIN32
+    TerminateProcess((HANDLE)child->process, 1);
+    child_clear(child);
+#else
+    kill(child->pid, SIGTERM);
+    waitpid(child->pid, NULL, 0);
+    child_clear(child);
+#endif
+}
 
-    if (exit_code)
-        *exit_code = -1;
-
-    if (programs_resolve_path(prog->path, resolved, sizeof resolved) != 0) {
-        if (errbuf && errlen)
-            snprintf(errbuf, errlen, "Файл «%s» недоступний.", prog->path);
-        return -1;
-    }
-
-    programs_chdir_home();
+int programs_child_poll(ChildProc *child, int *exit_code)
+{
+    if (!child || !child->active)
+        return 0;
 
 #ifdef _WIN32
     {
-        STARTUPINFOA si;
-        PROCESS_INFORMATION pi;
-        char cmd[PATH_LEN + 32];
         DWORD code;
-
-        ZeroMemory(&si, sizeof si);
-        si.cb = sizeof si;
-        ZeroMemory(&pi, sizeof pi);
-        snprintf(cmd, sizeof cmd, "\"%s\"", resolved);
-
-        {
-            const char *home = getenv("LAUNCHER_HOME");
-
-            if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE,
-                                NULL, home && home[0] ? home : NULL, &si, &pi)) {
-                if (errbuf && errlen)
-                    snprintf(errbuf, errlen, "CreateProcess: код %lu", GetLastError());
-                return -1;
-            }
+        if (WaitForSingleObject((HANDLE)child->process, 0) == WAIT_OBJECT_0) {
+            GetExitCodeProcess((HANDLE)child->process, &code);
+            if (exit_code)
+                *exit_code = (int)code;
+            child_clear(child);
+            return 1;
         }
-        WaitForSingleObject(pi.hProcess, INFINITE);
-        GetExitCodeProcess(pi.hProcess, &code);
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        if (exit_code)
-            *exit_code = (int)code;
         return 0;
     }
 #else
     {
-        pid_t pid = fork();
         int status;
-
-        if (pid < 0) {
-            if (errbuf && errlen)
-                snprintf(errbuf, errlen, "fork: %s", strerror(errno));
-            return -1;
+        pid_t r = waitpid(child->pid, &status, WNOHANG);
+        if (r == 0)
+            return 0;
+        if (r > 0) {
+            if (exit_code && WIFEXITED(status))
+                *exit_code = WEXITSTATUS(status);
+            else if (exit_code)
+                *exit_code = -1;
+            child->active = 0;
+            child->pid = 0;
+            return 1;
         }
-        if (pid == 0) {
-            execl(resolved, resolved, (char *)NULL);
-            _exit(127);
-        }
-        if (waitpid(pid, &status, 0) < 0)
-            return -1;
-        if (exit_code && WIFEXITED(status))
-            *exit_code = WEXITSTATUS(status);
         return 0;
     }
 #endif
+}
+
+int programs_spawn_async(const Program *prog, char *errbuf, size_t errlen)
+{
+    if (!prog) {
+        if (errbuf && errlen)
+            snprintf(errbuf, errlen, "Програму не обрано.");
+        return -1;
+    }
+    return programs_spawn_path_argv(prog->path, NULL, NULL, errbuf, errlen);
+}
+
+int programs_run_blocking(const Program *prog, char *errbuf, size_t errlen, int *exit_code)
+{
+    ChildProc child;
+    int code = -1;
+
+    if (exit_code)
+        *exit_code = -1;
+    if (!prog) {
+        if (errbuf && errlen)
+            snprintf(errbuf, errlen, "Програму не обрано.");
+        return -1;
+    }
+    if (programs_spawn_path_argv(prog->path, NULL, &child, errbuf, errlen) < 0)
+        return -1;
+    while (!programs_child_poll(&child, &code))
+#ifdef _WIN32
+        Sleep(50);
+#else
+        usleep(50000);
+#endif
+    if (exit_code)
+        *exit_code = code;
+    return 0;
 }

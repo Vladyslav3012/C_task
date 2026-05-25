@@ -3,8 +3,10 @@
 CC         = gcc
 CFLAGS     = -Wall -Wextra -std=c11 -O2
 INCLUDES   = -Iinclude
-SRC_CORE   = src/core/programs.c src/core/process.c
-SRC_GUI    = src/launcher/gui.c
+SRC_CORE   = src/core/programs.c src/core/process.c src/core/gold_config.c
+SRC_LAUNCHER = src/launcher/gui.c src/launcher/gui_layout.c \
+               src/launcher/gui_handlers.c src/launcher/ui_params.c \
+               src/launcher/indication.c
 SRC_CLI    = src/launcher/cli.c
 BINDIR     = bin
 OUTDIR     = output
@@ -26,7 +28,7 @@ endif
 GTK_CFLAGS := $(shell pkg-config --cflags gtk+-3.0 2>/dev/null)
 GTK_LIBS   := $(shell pkg-config --libs gtk+-3.0 2>/dev/null)
 
-MODULES    = demo gold_stub
+MODULES    = demo gold_stub gold_compute gold_viewer
 
 .PHONY: all clean run run-cli check-gtk dirs
 
@@ -52,8 +54,12 @@ dirs: $(BINDIR) $(OUTDIR)
 $(BINDIR) $(OUTDIR):
 	$(MKDIR_P) $@
 
-$(BINDIR)/launcher$(EXE): $(SRC_GUI) $(SRC_CORE) include/programs.h include/process.h | dirs
-	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) -o $@ $(SRC_GUI) $(SRC_CORE) $(GTK_LIBS)
+LAUNCHER_HDRS = include/programs.h include/process.h include/gold_config.h \
+                include/gui_app.h include/gui_layout.h include/gui_handlers.h \
+                include/ui_params.h include/indication.h
+
+$(BINDIR)/launcher$(EXE): $(SRC_LAUNCHER) $(SRC_CORE) $(LAUNCHER_HDRS) | dirs
+	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) -o $@ $(SRC_LAUNCHER) $(SRC_CORE) $(GTK_LIBS)
 
 $(BINDIR)/launcher-cli$(EXE): $(SRC_CLI) $(SRC_CORE) include/programs.h include/process.h | dirs
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(SRC_CLI) $(SRC_CORE)
@@ -63,6 +69,12 @@ $(BINDIR)/demo$(EXE): modules/demo/main.c | dirs
 
 $(BINDIR)/gold_stub$(EXE): modules/gold_stub/main.c | dirs
 	$(CC) $(CFLAGS) -o $@ $<
+
+$(BINDIR)/gold_compute$(EXE): modules/gold_compute/main.c | dirs
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(BINDIR)/gold_viewer$(EXE): modules/gold_viewer/main.c | dirs
+	$(CC) $(CFLAGS) $(GTK_CFLAGS) -o $@ $< $(GTK_LIBS)
 
 run: all
 	$(RUN_LAUNCHER)
